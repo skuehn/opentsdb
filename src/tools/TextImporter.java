@@ -20,21 +20,20 @@ import java.io.InputStreamReader;
 import java.util.HashMap;
 import java.util.zip.GZIPInputStream;
 
-import com.stumbleupon.async.Callback;
-import com.stumbleupon.async.Deferred;
+import net.opentsdb.accumulo.AccumuloClient;
+import net.opentsdb.core.TSDB;
+import net.opentsdb.core.Tags;
+import net.opentsdb.core.WritableDataPoints;
+import net.opentsdb.stats.StatsCollector;
 
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-
-import org.hbase.async.HBaseClient;
 import org.hbase.async.HBaseRpc;
 import org.hbase.async.PleaseThrottleException;
 import org.hbase.async.PutRequest;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
-import net.opentsdb.core.Tags;
-import net.opentsdb.core.TSDB;
-import net.opentsdb.core.WritableDataPoints;
-import net.opentsdb.stats.StatsCollector;
+import com.stumbleupon.async.Callback;
+import com.stumbleupon.async.Deferred;
 
 final class TextImporter {
 
@@ -59,11 +58,11 @@ final class TextImporter {
       usage(argp, 2);
     }
 
-    final HBaseClient client = CliOptions.clientFromOptions(argp);
+    final AccumuloClient client = CliOptions.clientFromOptions(argp);
     // Flush more frequently since we read very fast from the files.
     client.setFlushInterval((short) 500);  // ms
     final TSDB tsdb = new TSDB(client, argp.get("--table", "tsdb"),
-                               argp.get("--uidtable", "tsdb-uid"));
+                               argp.get("--uidtable", "tsdb_uid"));
     argp = null;
     try {
       int points = 0;
@@ -94,7 +93,7 @@ final class TextImporter {
 
   static volatile boolean throttle = false;
 
-  private static int importFile(final HBaseClient client,
+  private static int importFile(final AccumuloClient client,
                                 final TSDB tsdb,
                                 final String path) throws IOException {
     final long start_time = System.nanoTime();

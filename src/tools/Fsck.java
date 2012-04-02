@@ -14,25 +14,23 @@ package net.opentsdb.tools;
 
 import java.util.ArrayList;
 
-import com.stumbleupon.async.Callback;
-import com.stumbleupon.async.Deferred;
-
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-
-import org.hbase.async.Bytes;
-import org.hbase.async.DeleteRequest;
-import org.hbase.async.HBaseClient;
-import org.hbase.async.KeyValue;
-import org.hbase.async.PutRequest;
-import org.hbase.async.Scanner;
-
+import net.opentsdb.accumulo.AccumuloClient;
 import net.opentsdb.core.Const;
 import net.opentsdb.core.IllegalDataException;
 import net.opentsdb.core.Internal;
 import net.opentsdb.core.Query;
 import net.opentsdb.core.TSDB;
-import net.opentsdb.uid.UniqueId;
+
+import org.apache.accumulo.core.client.Scanner;
+import org.hbase.async.Bytes;
+import org.hbase.async.DeleteRequest;
+import org.hbase.async.KeyValue;
+import org.hbase.async.PutRequest;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
+import com.stumbleupon.async.Callback;
+import com.stumbleupon.async.Deferred;
 
 /**
  * Tool to look for and fix corrupted data in a TSDB.
@@ -66,10 +64,10 @@ final class Fsck {
       usage(argp, "Not enough arguments.", 2);
     }
 
-    final HBaseClient client = CliOptions.clientFromOptions(argp);
+    final AccumuloClient client = CliOptions.clientFromOptions(argp);
     final byte[] table = argp.get("--table", "tsdb").getBytes();
     final TSDB tsdb = new TSDB(client, argp.get("--table", "tsdb"),
-                               argp.get("--uidtable", "tsdb-uid"));
+                               argp.get("--uidtable", "tsdb_uid"));
     final boolean fix = argp.has("--fix");
     argp = null;
     int errors = 42;
@@ -82,7 +80,7 @@ final class Fsck {
   }
 
   private static int fsck(final TSDB tsdb,
-                           final HBaseClient client,
+                           final AccumuloClient client,
                            final byte[] table,
                            final boolean fix,
                            final String[] args) throws Exception {
@@ -122,9 +120,7 @@ final class Fsck {
       long rowcount = 0;
       final Bytes.ByteMap<Seen> seen = new Bytes.ByteMap<Seen>();
       final Scanner scanner = Internal.getScanner(query);
-      ArrayList<ArrayList<KeyValue>> rows;
-      while ((rows = scanner.nextRows().joinUninterruptibly()) != null) {
-        for (final ArrayList<KeyValue> row : rows) {
+        for (final ArrayList<KeyValue> row : AccumuloClient.asRows(scanner)) {
           rowcount++;
           // Take a copy of the row-key because we're going to zero-out the
           // timestamp and use that as a key in our `seen' map.
@@ -306,7 +302,6 @@ final class Fsck {
               prev.kv = kv;
             }
           }
-        }
       }
       final long timing = (System.nanoTime() - start_time) / 1000000;
       System.out.println(kvcount + " KVs (in " + rowcount

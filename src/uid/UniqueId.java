@@ -13,25 +13,33 @@
 package net.opentsdb.uid;
 
 import java.nio.charset.Charset;
-import java.util.Arrays;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.LinkedList;
 import java.util.List;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.atomic.AtomicLong;
 
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
+import net.opentsdb.accumulo.AccumuloClient;
 
+import org.apache.accumulo.core.client.Connector;
+import org.apache.accumulo.core.client.Instance;
+import org.apache.accumulo.core.client.Scanner;
+import org.apache.accumulo.core.data.Range;
+import org.apache.hadoop.io.Text;
+import org.apache.zookeeper.WatchedEvent;
+import org.apache.zookeeper.Watcher;
+import org.apache.zookeeper.ZooKeeper;
+import org.apache.zookeeper.data.Stat;
 import org.hbase.async.Bytes;
 import org.hbase.async.DeleteRequest;
 import org.hbase.async.GetRequest;
-import org.hbase.async.HBaseClient;
 import org.hbase.async.HBaseException;
 import org.hbase.async.KeyValue;
 import org.hbase.async.PutRequest;
 import org.hbase.async.RowLock;
-import org.hbase.async.RowLockRequest;
-import org.hbase.async.Scanner;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  * Thread-safe implementation of the {@link UniqueIdInterface}.
@@ -62,7 +70,7 @@ public final class UniqueId implements UniqueIdInterface {
   private static final short MAX_SUGGESTIONS = 25;
 
   /** HBase client to use.  */
-  private final HBaseClient client;
+  private final AccumuloClient client;
   /** Table where IDs are stored.  */
   private final byte[] table;
   /** The kind of UniqueId, used as the column qualifier. */
@@ -92,7 +100,7 @@ public final class UniqueId implements UniqueIdInterface {
    * @throws IllegalArgumentException if width is negative or too small/large
    * or if kind is an empty string.
    */
-  public UniqueId(final HBaseClient client, final byte[] table, final String kind,
+  public UniqueId(final AccumuloClient client, final byte[] table, final String kind,
                   final int width) {
     this.client = client;
     this.table = table;
@@ -215,6 +223,12 @@ public final class UniqueId implements UniqueIdInterface {
           + Arrays.toString(found));
     }
   }
+  
+  public static AtomicLong nextId = new AtomicLong(1);
+  public static AtomicLong reserved = new AtomicLong(0);
+  public final static String ZOO_PATH = "/tsdb/maxId";
+  public final static long NUM_TO_RESERVE = 100;
+
 
   public byte[] getOrCreateId(String name) throws HBaseException {
     short attempt = MAX_ATTEMPTS_ASSIGN_ID;
@@ -227,25 +241,6 @@ public final class UniqueId implements UniqueIdInterface {
         LOG.info("Creating an ID for kind='" + kind()
                  + "' name='" + name + '\'');
       }
-
-      // The dance to assign an ID.
-      RowLock lock;
-      try {
-        lock = getLock();
-      } catch (HBaseException e) {
-        try {
-          Thread.sleep(61000 / MAX_ATTEMPTS_ASSIGN_ID);
-        } catch (InterruptedException ie) {
-          break;  // We've been asked to stop here, let's bail out.
-        }
-        hbe = e;
-        continue;
-      }
-      if (lock == null) {  // Should not happen.
-        LOG.error("WTF, got a null pointer as a RowLock!");
-        continue;
-      }
-      // We now have hbase.regionserver.lease.period ms to complete the loop.
 
       try {
         // Verify that the row still doesn't exist (to avoid re-creating it if
@@ -263,31 +258,36 @@ public final class UniqueId implements UniqueIdInterface {
         long id;     // The ID.
         byte row[];  // The same ID, as a byte array.
         try {
-          // We want to send an ICV with our explicit RowLock, but HBase's RPC
-          // interface doesn't expose this interface.  Since an ICV would
-          // attempt to lock the row again, and we already locked it, we can't
-          // use ICV here, we have to do it manually while we hold the RowLock.
-          // To be fixed by HBASE-2292.
-          { // HACK HACK HACK
-            {
-              final byte[] current_maxid = hbaseGet(MAXID_ROW, ID_FAMILY, lock);
-              if (current_maxid != null) {
-                if (current_maxid.length == 8) {
-                  id = Bytes.getLong(current_maxid) + 1;
-                } else {
-                  throw new IllegalStateException("invalid current_maxid="
-                      + Arrays.toString(current_maxid));
+          // Accumulo doesn't support row locking, so use zookeeper to generate ids
+          synchronized (reserved) {
+            if (reserved.get() == 0) {
+              // need to reserve some more ids
+              Connector conn = client.getConnector();
+              Instance inst = conn.getInstance();
+              ZooKeeper zoo = new ZooKeeper(inst.getZooKeepers(), inst.getZooKeepersSessionTimeOut(), new Watcher() {
+                public void process(WatchedEvent event) {
+                  LOG.info("ZooKeeper says " + event);
                 }
-              } else {
-                id = 1;
+              });
+              try {
+                // Read the data (and version)
+                Stat stat = new Stat();
+                byte[] data = zoo.getData(ZOO_PATH, null, stat);
+                nextId.set(Bytes.getLong(data));
+                // Reserve a few ids but make sure no one else has reserved any
+                zoo.setData(ZOO_PATH, Bytes.fromLong(nextId.get() + NUM_TO_RESERVE), stat.getVersion());
+                reserved.set(NUM_TO_RESERVE);
+              } finally {
+                zoo.close();
               }
-              row = Bytes.fromLong(id);
             }
-            final PutRequest update_maxid = new PutRequest(
-              table, MAXID_ROW, ID_FAMILY, kind, row, lock);
-            hbasePutWithRetry(update_maxid, MAX_ATTEMPTS_PUT,
-                              INITIAL_EXP_BACKOFF_DELAY);
-          } // end HACK HACK HACK.
+            if (reserved.get() == 0)
+              continue;
+            reserved.decrementAndGet();
+            id = nextId.getAndIncrement();
+            row = Bytes.fromLong(id);
+          }
+
           LOG.info("Got ID=" + id
                    + " for kind='" + kind() + "' name='" + name + "'");
           // row.length should actually be 8.
@@ -355,7 +355,7 @@ public final class UniqueId implements UniqueIdInterface {
         addNameToCache(row, name);
         return row;
       } finally {
-        unlock(lock);
+        //unlock(lock);
       }
     }
     if (hbe == null) {
@@ -380,9 +380,7 @@ public final class UniqueId implements UniqueIdInterface {
     final Scanner scanner = getSuggestScanner(search);
     final LinkedList<String> suggestions = new LinkedList<String>();
     try {
-      ArrayList<ArrayList<KeyValue>> rows;
-      while ((rows = scanner.nextRows().joinUninterruptibly()) != null) {
-        for (final ArrayList<KeyValue> row : rows) {
+        for (final ArrayList<KeyValue> row : AccumuloClient.asRows(scanner)) {
           if (row.size() != 1) {
             LOG.error("WTF shouldn't happen!  Scanner " + scanner + " returned"
                       + " a row that doesn't have exactly 1 KeyValue: " + row);
@@ -407,7 +405,6 @@ public final class UniqueId implements UniqueIdInterface {
             break;
           }
         }
-      }
     } catch (HBaseException e) {
       throw e;
     } catch (Exception e) {
@@ -526,37 +523,10 @@ public final class UniqueId implements UniqueIdInterface {
       end_row[start_row.length - 1]++;
     }
     final Scanner scanner = client.newScanner(table);
-    scanner.setStartKey(start_row);
-    scanner.setStopKey(end_row);
-    scanner.setFamily(ID_FAMILY);
-    scanner.setQualifier(kind);
-    scanner.setMaxNumRows(MAX_SUGGESTIONS);
+    scanner.setRange(new Range(new Text(start_row), new Text(end_row)));
+    scanner.fetchColumn(new Text(ID_FAMILY), new Text(kind));
+    scanner.setBatchSize(MAX_SUGGESTIONS);
     return scanner;
-  }
-
-  /** Gets an exclusive lock for on the table using the MAXID_ROW.
-   * The lock expires after hbase.regionserver.lease.period ms
-   * (default = 60000)
-   * @throws HBaseException if the row lock couldn't be acquired.
-   */
-  private RowLock getLock() throws HBaseException {
-    try {
-      return client.lockRow(new RowLockRequest(table, MAXID_ROW)).joinUninterruptibly();
-    } catch (HBaseException e) {
-      LOG.warn("Failed to lock the `MAXID_ROW' row", e);
-      throw e;
-    } catch (Exception e) {
-      throw new RuntimeException("Should never be here", e);
-    }
-  }
-
-  /** Releases the lock passed in argument. */
-  private void unlock(final RowLock lock) {
-    try {
-      client.unlockRow(lock);
-    } catch (HBaseException e) {
-      LOG.error("Error while releasing the lock on row `MAXID_ROW'", e);
-    }
   }
 
   /** Returns the cell of the specified row, using family:kind. */

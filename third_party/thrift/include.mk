@@ -13,12 +13,11 @@
 # You should have received a copy of the GNU Lesser General Public License
 # along with this library.  If not, see <http://www.gnu.org/licenses/>.
 
-ZOOKEEPER_VERSION := 3.3.4
-ZOOKEEPER := third_party/zookeeper/zookeeper-$(ZOOKEEPER_VERSION).jar
-#ZOOKEEPER_BASE_URL := $(OPENTSDB_THIRD_PARTY_BASE_URL)
-ZOOKEEPER_BASE_URL := https://repository.apache.org/content/groups/public/org/apache/zookeeper/zookeeper/3.3.4
+THRIFT_VERSION := 0.6.1
+THRIFT := third_party/thrift/libthrift-$(THRIFT_VERSION).jar
+THRIFT_BASE_URL := https://repository.apache.org/content/groups/public/org/apache/thrift/libthrift/$(THRIFT_VERSION)
 
-$(ZOOKEEPER): $(ZOOKEEPER).md5
-	set dummy "$(ZOOKEEPER_BASE_URL)" "$(ZOOKEEPER)"; shift; $(FETCH_DEPENDENCY)
+$(THRIFT): $(THRIFT).md5
+	set dummy "$(THRIFT_BASE_URL)" "$(THRIFT)"; shift; $(FETCH_DEPENDENCY)
 
-THIRD_PARTY += $(ZOOKEEPER)
+THIRD_PARTY += $(THRIFT)

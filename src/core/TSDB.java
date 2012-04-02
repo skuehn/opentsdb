@@ -17,8 +17,10 @@ import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
 
-import com.stumbleupon.async.Callback;
-import com.stumbleupon.async.Deferred;
+import net.opentsdb.accumulo.AccumuloClient;
+import net.opentsdb.stats.Histogram;
+import net.opentsdb.stats.StatsCollector;
+import net.opentsdb.uid.UniqueId;
 
 import org.hbase.async.Bytes;
 import org.hbase.async.DeleteRequest;
@@ -28,9 +30,8 @@ import org.hbase.async.HBaseException;
 import org.hbase.async.KeyValue;
 import org.hbase.async.PutRequest;
 
-import net.opentsdb.uid.UniqueId;
-import net.opentsdb.stats.Histogram;
-import net.opentsdb.stats.StatsCollector;
+import com.stumbleupon.async.Callback;
+import com.stumbleupon.async.Deferred;
 
 /**
  * Thread-safe implementation of the TSDB client.
@@ -56,7 +57,7 @@ public final class TSDB {
   }
 
   /** Client for the HBase cluster to use.  */
-  final HBaseClient client;
+  final AccumuloClient client;
 
   /** Name of the table in which timeseries are stored.  */
   final byte[] table;
@@ -84,7 +85,7 @@ public final class TSDB {
    * @param uniqueids_table The name of the HBase table where the unique IDs
    * are stored.
    */
-  public TSDB(final HBaseClient client,
+  public TSDB(final AccumuloClient client,
               final String timeseries_table,
               final String uniqueids_table) {
     this.client = client;
@@ -144,12 +145,6 @@ public final class TSDB {
     } finally {
       collector.clearExtraTag("class");
     }
-    collector.record("hbase.root_lookups", client.rootLookupCount());
-    collector.record("hbase.meta_lookups",
-                     client.uncontendedMetaLookupCount(), "type=uncontended");
-    collector.record("hbase.meta_lookups",
-                     client.contendedMetaLookupCount(), "type=contended");
-
     compactionq.collectStats(collector);
   }
 

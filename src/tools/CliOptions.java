@@ -12,15 +12,16 @@
 // see <http://www.gnu.org/licenses/>.
 package net.opentsdb.tools;
 
-import ch.qos.logback.classic.Logger;
-import ch.qos.logback.classic.Level;
+import net.opentsdb.accumulo.AccumuloClient;
 
-import org.slf4j.LoggerFactory;
-
+import org.apache.accumulo.core.client.Instance;
+import org.apache.accumulo.core.client.ZooKeeperInstance;
 import org.jboss.netty.logging.InternalLoggerFactory;
 import org.jboss.netty.logging.Slf4JLoggerFactory;
+import org.slf4j.LoggerFactory;
 
-import org.hbase.async.HBaseClient;
+import ch.qos.logback.classic.Level;
+import ch.qos.logback.classic.Logger;
 
 /** Helper functions to parse arguments passed to {@code main}.  */
 final class CliOptions {
@@ -36,13 +37,13 @@ final class CliOptions {
                    + " (default: tsdb).");
     argp.addOption("--uidtable", "TABLE",
                    "Name of the HBase table to use for Unique IDs"
-                   + " (default: tsdb-uid).");
+                   + " (default: tsdb_quid).");
     argp.addOption("--zkquorum", "SPEC",
                    "Specification of the ZooKeeper quorum to use"
                    + " (default: localhost).");
-    argp.addOption("--zkbasedir", "PATH",
-                   "Path under which is the znode for the -ROOT- region"
-                   + " (default: /hbase).");
+    argp.addOption("--instance", "accumulo", "The name of the accumulo instance to use");
+    argp.addOption("--auser", "root", "The user to use to write to accumulo tables");
+    argp.addOption("--apass", "secret", "The password to use to for the accumulo user");
   }
 
   /** Adds a --verbose flag.  */
@@ -92,15 +93,18 @@ final class CliOptions {
     }
   }
 
-  static HBaseClient clientFromOptions(final ArgP argp) {
+  static AccumuloClient clientFromOptions(final ArgP argp) {
     if (argp.optionExists("--auto-metric") && argp.has("--auto-metric")) {
       System.setProperty("tsd.core.auto_create_metrics", "true");
     }
     final String zkq = argp.get("--zkquorum", "localhost");
-    if (argp.has("--zkbasedir")) {
-      return new HBaseClient(zkq, argp.get("--zkbasedir"));
-    } else {
-      return new HBaseClient(zkq);
+    Instance inst = new ZooKeeperInstance(argp.get("--instance"), zkq);
+    final String user = argp.get("--auser", "root");
+    final String passwd = argp.get("--apass", "secret");
+    try {
+      return new AccumuloClient(inst.getConnector(user, passwd.getBytes()));
+    } catch (Exception ex) {
+      throw new RuntimeException(ex);
     }
   }
 

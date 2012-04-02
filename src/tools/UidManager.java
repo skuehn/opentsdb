@@ -20,19 +20,19 @@ import java.util.Arrays;
 import java.util.HashMap;
 import java.util.Map;
 
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-
-import org.hbase.async.Bytes;
-import org.hbase.async.GetRequest;
-import org.hbase.async.HBaseClient;
-import org.hbase.async.HBaseException;
-import org.hbase.async.KeyValue;
-import org.hbase.async.Scanner;
-
+import net.opentsdb.accumulo.AccumuloClient;
 import net.opentsdb.uid.NoSuchUniqueId;
 import net.opentsdb.uid.NoSuchUniqueName;
 import net.opentsdb.uid.UniqueId;
+
+import org.apache.accumulo.core.client.Scanner;
+import org.apache.hadoop.io.Text;
+import org.hbase.async.Bytes;
+import org.hbase.async.GetRequest;
+import org.hbase.async.HBaseException;
+import org.hbase.async.KeyValue;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  * Command line tool to manipulate UIDs.
@@ -125,7 +125,7 @@ final class UidManager {
       usage(argp, "Not enough arguments");
       System.exit(2);
     }
-    final byte[] table = argp.get("--uidtable", "tsdb-uid").getBytes();
+    final byte[] table = argp.get("--uidtable", "tsdb_uid").getBytes();
     final short idwidth = (argp.has("--idwidth")
                            ? Short.parseShort(argp.get("--idwidth"))
                            : 3);
@@ -134,7 +134,7 @@ final class UidManager {
       System.exit(3);
     }
     final boolean ignorecase = argp.has("--ignore-case") || argp.has("-i");
-    final HBaseClient client = CliOptions.clientFromOptions(argp);
+    final AccumuloClient client = CliOptions.clientFromOptions(argp);
     argp = null;
     int rc;
     try {
@@ -150,7 +150,7 @@ final class UidManager {
     System.exit(rc);
   }
 
-  private static int runCommand(final HBaseClient client,
+  private static int runCommand(final AccumuloClient client,
                                 final byte[] table,
                                 final short idwidth,
                                 final boolean ignorecase,
@@ -205,32 +205,29 @@ final class UidManager {
    * @param args Command line arguments ({@code [kind] RE}).
    * @return The exit status of the command (0 means at least 1 match).
    */
-  private static int grep(final HBaseClient client,
+  private static int grep(final AccumuloClient client,
                           final byte[] table,
                           final boolean ignorecase,
                           final String[] args) {
     final Scanner scanner = client.newScanner(table);
-    scanner.setMaxNumRows(1024);
+    scanner.setBatchSize(1024);
     String regexp;
-    scanner.setFamily(ID_FAMILY);
     if (args.length == 3) {
-      scanner.setQualifier(toBytes(args[1]));
+      scanner.fetchColumn(new Text(ID_FAMILY), new Text(toBytes(args[1])));
       regexp = args[2];
     } else {
+      scanner.fetchColumnFamily(new Text(ID_FAMILY));
       regexp = args[1];
     }
     if (ignorecase) {
       regexp = "(?i)" + regexp;
     }
-    scanner.setKeyRegexp(regexp, CHARSET);
+    scanner.setRowRegex(regexp);
     boolean found = false;
     try {
-      ArrayList<ArrayList<KeyValue>> rows;
-      while ((rows = scanner.nextRows().joinUninterruptibly()) != null) {
-        for (final ArrayList<KeyValue> row : rows) {
+        for (final ArrayList<KeyValue> row : AccumuloClient.asRows(scanner)) {
           found |= printResult(row, ID_FAMILY, true);
         }
-      }
     } catch (HBaseException e) {
       LOG.error("Error while scanning HBase, scanner=" + scanner, e);
       throw e;
@@ -279,7 +276,7 @@ final class UidManager {
    * @param args Command line arguments ({@code assign name [names]}).
    * @return The exit status of the command (0 means success).
    */
-  private static int assign(final HBaseClient client,
+  private static int assign(final AccumuloClient client,
                             final byte[] table,
                             final short idwidth,
                             final String[] args) {
@@ -305,7 +302,7 @@ final class UidManager {
    * @param args Command line arguments ({@code assign name [names]}).
    * @return The exit status of the command (0 means success).
    */
-  private static int rename(final HBaseClient client,
+  private static int rename(final AccumuloClient client,
                             final byte[] table,
                             final short idwidth,
                             final String[] args) {
@@ -333,7 +330,7 @@ final class UidManager {
    * @param table The name of the HBase table to use.
    * @return The exit status of the command (0 means success).
    */
-  private static int fsck(final HBaseClient client, final byte[] table) {
+  private static int fsck(final AccumuloClient client, final byte[] table) {
 
     final class Uids {
       int errors;
@@ -355,12 +352,10 @@ final class UidManager {
     final long start_time = System.nanoTime();
     final HashMap<String, Uids> name2uids = new HashMap<String, Uids>();
     final Scanner scanner = client.newScanner(table);
-    scanner.setMaxNumRows(1024);
+    scanner.setBatchSize(1024);
     int kvcount = 0;
     try {
-      ArrayList<ArrayList<KeyValue>> rows;
-      while ((rows = scanner.nextRows().joinUninterruptibly()) != null) {
-        for (final ArrayList<KeyValue> row : rows) {
+        for (final ArrayList<KeyValue> row : AccumuloClient.asRows(scanner)) {
           for (final KeyValue kv : row) {
             kvcount++;
             final String kind = fromBytes(kv.qualifier());
@@ -412,7 +407,6 @@ final class UidManager {
             }
           }
         }
-      }
     } catch (HBaseException e) {
       LOG.error("Error while scanning HBase, scanner=" + scanner, e);
       throw e;
@@ -515,7 +509,7 @@ final class UidManager {
    * @param kind The 'kind' of the ID (can be {@code null}).
    * @return The exit status of the command (0 means at least 1 found).
    */
-  private static int lookupId(final HBaseClient client,
+  private static int lookupId(final AccumuloClient client,
                               final byte[] table,
                               final short idwidth,
                               final long lid,
@@ -537,7 +531,7 @@ final class UidManager {
    * @param family The family in which we're interested.
    * @return 0 if at least one cell was found and printed, 1 otherwise.
    */
-  private static int findAndPrintRow(final HBaseClient client,
+  private static int findAndPrintRow(final AccumuloClient client,
                                      final byte[] table,
                                      final byte[] key,
                                      final byte[] family,
@@ -566,7 +560,7 @@ final class UidManager {
    * @param id The ID to look for.
    * @return 0 if the ID for this kind was found, 1 otherwise.
    */
-  private static int extactLookupId(final HBaseClient client,
+  private static int extactLookupId(final AccumuloClient client,
                                     final byte[] table,
                                     final short idwidth,
                                     final String kind,
@@ -613,7 +607,7 @@ final class UidManager {
    * @param kind The 'kind' of the ID (can be {@code null}).
    * @return The exit status of the command (0 means at least 1 found).
    */
-  private static int lookupName(final HBaseClient client,
+  private static int lookupName(final AccumuloClient client,
                                 final byte[] table,
                                 final short idwidth,
                                 final String name,
@@ -632,7 +626,7 @@ final class UidManager {
    * @param name The name to look for.
    * @return 0 if the name for this kind was found, 1 otherwise.
    */
-  private static int extactLookupName(final HBaseClient client,
+  private static int extactLookupName(final AccumuloClient client,
                                       final byte[] table,
                                       final short idwidth,
                                       final String kind,

@@ -29,3 +29,7 @@ include third_party/powermock/include.mk
 include third_party/slf4j/include.mk
 include third_party/suasync/include.mk
 include third_party/zookeeper/include.mk
+include third_party/accumulo/include.mk
+include third_party/hadoop/include.mk
+include third_party/thrift/include.mk
+include third_party/cloudtrace/include.mk

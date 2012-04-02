@@ -16,17 +16,15 @@ import java.io.File;
 import java.net.InetSocketAddress;
 import java.util.concurrent.Executors;
 
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
+import net.opentsdb.BuildData;
+import net.opentsdb.accumulo.AccumuloClient;
+import net.opentsdb.core.TSDB;
+import net.opentsdb.tsd.PipelineFactory;
 
 import org.jboss.netty.bootstrap.ServerBootstrap;
 import org.jboss.netty.channel.socket.nio.NioServerSocketChannelFactory;
-
-import org.hbase.async.HBaseClient;
-
-import net.opentsdb.BuildData;
-import net.opentsdb.core.TSDB;
-import net.opentsdb.tsd.PipelineFactory;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  * Main class of the TSD, the Time Series Daemon.
@@ -116,11 +114,11 @@ final class TSDMain {
     final NioServerSocketChannelFactory factory =
         new NioServerSocketChannelFactory(Executors.newCachedThreadPool(),
                                           Executors.newCachedThreadPool());
-    final HBaseClient client = CliOptions.clientFromOptions(argp);
+    final AccumuloClient client = CliOptions.clientFromOptions(argp);
     try {
       // Make sure we don't even start if we can't find out tables.
       final String table = argp.get("--table", "tsdb");
-      final String uidtable = argp.get("--uidtable", "tsdb-uid");
+      final String uidtable = argp.get("--uidtable", "tsdb_uid");
       client.ensureTableExists(table).joinUninterruptibly();
       client.ensureTableExists(uidtable).joinUninterruptibly();
 

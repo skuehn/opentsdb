@@ -15,9 +15,9 @@ package net.opentsdb.core;
 import java.util.ArrayList;
 import java.util.Map;
 
+import org.apache.accumulo.core.client.Scanner;
 import org.hbase.async.Bytes;
 import org.hbase.async.KeyValue;
-import org.hbase.async.Scanner;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;

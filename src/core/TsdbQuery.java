@@ -21,18 +21,20 @@ import java.util.Iterator;
 import java.util.Map;
 import java.util.TreeMap;
 
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-
-import org.hbase.async.Bytes;
-import org.hbase.async.HBaseException;
-import org.hbase.async.KeyValue;
-import org.hbase.async.Scanner;
-import static org.hbase.async.Bytes.ByteMap;
-
+import net.opentsdb.accumulo.AccumuloClient;
 import net.opentsdb.stats.Histogram;
 import net.opentsdb.uid.NoSuchUniqueId;
 import net.opentsdb.uid.NoSuchUniqueName;
+
+import org.apache.accumulo.core.client.Scanner;
+import org.apache.accumulo.core.data.Range;
+import org.apache.hadoop.io.Text;
+import org.hbase.async.Bytes;
+import org.hbase.async.Bytes.ByteMap;
+import org.hbase.async.HBaseException;
+import org.hbase.async.KeyValue;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  * Non-synchronized implementation of {@link Query}.
@@ -246,10 +248,8 @@ final class TsdbQuery implements Query {
     long starttime = System.nanoTime();
     final Scanner scanner = getScanner();
     try {
-      ArrayList<ArrayList<KeyValue>> rows;
-      while ((rows = scanner.nextRows().joinUninterruptibly()) != null) {
         hbase_time += (System.nanoTime() - starttime) / 1000000;
-        for (final ArrayList<KeyValue> row : rows) {
+        for (final ArrayList<KeyValue> row : AccumuloClient.asRows(scanner)) {
           final byte[] key = row.get(0).key();
           if (Bytes.memcmp(metric, key, 0, metric_width) != 0) {
             throw new IllegalDataException("HBase returned a row that doesn't match"
@@ -265,7 +265,6 @@ final class TsdbQuery implements Query {
           nrows++;
           starttime = System.nanoTime();
         }
-      }
     } catch (RuntimeException e) {
       throw e;
     } catch (Exception e) {
@@ -381,12 +380,11 @@ final class TsdbQuery implements Query {
     System.arraycopy(metric, 0, end_row, 0, metric_width);
 
     final Scanner scanner = tsdb.client.newScanner(tsdb.table);
-    scanner.setStartKey(start_row);
-    scanner.setStopKey(end_row);
+    scanner.setRange(new Range(new Text(start_row), new Text(end_row)));
     if (tags.size() > 0 || group_bys != null) {
       createAndSetFilter(scanner);
     }
-    scanner.setFamily(TSDB.FAMILY);
+    scanner.fetchColumnFamily(new Text(TSDB.FAMILY));
     return scanner;
   }
 
@@ -485,7 +483,8 @@ final class TsdbQuery implements Query {
     } while (tag != group_by);  // Stop when they both become null.
     // Skip any number of tags before the end.
     buf.append("(?:.{").append(tagsize).append("})*$");
-    scanner.setKeyRegexp(buf.toString(), CHARSET);
+    //scanner.setKeyRegexp(buf.toString(), CHARSET);
+    scanner.setRowRegex(buf.toString());
    }
 
   /**

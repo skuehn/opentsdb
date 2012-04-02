@@ -17,16 +17,16 @@ import java.util.Arrays;
 import java.util.Date;
 import java.util.Map;
 
-import org.hbase.async.Bytes;
-import org.hbase.async.DeleteRequest;
-import org.hbase.async.HBaseClient;
-import org.hbase.async.KeyValue;
-import org.hbase.async.Scanner;
-
+import net.opentsdb.accumulo.AccumuloClient;
 import net.opentsdb.core.IllegalDataException;
 import net.opentsdb.core.Internal;
 import net.opentsdb.core.Query;
 import net.opentsdb.core.TSDB;
+
+import org.apache.accumulo.core.client.Scanner;
+import org.hbase.async.Bytes;
+import org.hbase.async.DeleteRequest;
+import org.hbase.async.KeyValue;
 
 /**
  * Tool to dump the data straight from HBase.
@@ -65,10 +65,10 @@ final class DumpSeries {
       usage(argp, "Not enough arguments.", 2);
     }
 
-    final HBaseClient client = CliOptions.clientFromOptions(argp);
+    final AccumuloClient client = CliOptions.clientFromOptions(argp);
     final byte[] table = argp.get("--table", "tsdb").getBytes();
     final TSDB tsdb = new TSDB(client, argp.get("--table", "tsdb"),
-                               argp.get("--uidtable", "tsdb-uid"));
+                               argp.get("--uidtable", "tsdb_uid"));
     final boolean delete = argp.has("--delete");
     final boolean importformat = delete || argp.has("--import");
     argp = null;
@@ -80,7 +80,7 @@ final class DumpSeries {
   }
 
   private static void doDump(final TSDB tsdb,
-                             final HBaseClient client,
+                             final AccumuloClient client,
                              final byte[] table,
                              final boolean delete,
                              final boolean importformat,
@@ -91,9 +91,9 @@ final class DumpSeries {
     final StringBuilder buf = new StringBuilder();
     for (final Query query : queries) {
       final Scanner scanner = Internal.getScanner(query);
-      ArrayList<ArrayList<KeyValue>> rows;
-      while ((rows = scanner.nextRows().joinUninterruptibly()) != null) {
-        for (final ArrayList<KeyValue> row : rows) {
+      //ArrayList<ArrayList<KeyValue>> rows;
+      //while ((rows = scanner.nextRows().joinUninterruptibly()) != null) {
+        for (final ArrayList<KeyValue> row : AccumuloClient.asRows(scanner)) {
           buf.setLength(0);
           final byte[] key = row.get(0).key();
           final long base_time = Internal.baseTime(tsdb, key);
@@ -133,7 +133,7 @@ final class DumpSeries {
             client.delete(del);
           }
         }
-      }
+      //}
     }
   }
 
