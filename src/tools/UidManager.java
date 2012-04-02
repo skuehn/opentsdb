@@ -284,6 +284,7 @@ final class UidManager {
     for (int i = 2; i < args.length; i++) {
       try {
         uid.getOrCreateId(args[i]);
+        client.flush();
         // Lookup again the ID we've just created and print it.
         extactLookupName(client, table, idwidth, args[1], args[i]);
       } catch (HBaseException e) {
