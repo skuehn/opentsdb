@@ -26,8 +26,10 @@ import net.opentsdb.stats.Histogram;
 import net.opentsdb.uid.NoSuchUniqueId;
 import net.opentsdb.uid.NoSuchUniqueName;
 
+import org.apache.accumulo.core.client.IteratorSetting;
 import org.apache.accumulo.core.client.Scanner;
 import org.apache.accumulo.core.data.Range;
+import org.apache.accumulo.core.iterators.user.RegExFilter;
 import org.apache.hadoop.io.Text;
 import org.hbase.async.Bytes;
 import org.hbase.async.Bytes.ByteMap;
@@ -434,10 +436,10 @@ final class TsdbQuery implements Query {
     final short tagsize = (short) (name_width + value_width);
     // Generate a regexp for our tags.  Say we have 2 tags: { 0 0 1 0 0 2 }
     // and { 4 5 6 9 8 7 }, the regexp will be:
-    // "^.{7}(?:.{6})*\\Q\000\000\001\000\000\002\\E(?:.{6})*\\Q\004\005\006\011\010\007\\E(?:.{6})*$"
+    // "^.{7}(?:.{6})*\\x00\\x00\\x01\\x00\\x00\\x02(?:.{6})*\\x04\\x05\\x06\\x11\\x10\\x07(?:.{6})*$"
     final StringBuilder buf = new StringBuilder(
         15  // "^.{N}" + "(?:.{M})*" + "$"
-        + ((13 + tagsize) // "(?:.{M})*\\Q" + tagsize bytes + "\\E"
+        + ((11 + tagsize * 4) // "(?:.{M})*" + tagsize bytes +
            * (tags.size() + (group_bys == null ? 0 : group_bys.size() * 3))));
     // In order to avoid re-allocations, reserve a bit more w/ groups ^^^
 
@@ -457,7 +459,7 @@ final class TsdbQuery implements Query {
     // regexp in order by ID, which means we just merge two sorted lists.
     do {
       // Skip any number of tags.
-      buf.append("(?:.{").append(tagsize).append("})*\\Q");
+      buf.append("(?:.{").append(tagsize).append("})*");
       if (isTagNext(name_width, tag, group_by)) {
         addId(buf, tag);
         tag = tags.hasNext() ? tags.next() : null;
@@ -471,7 +473,6 @@ final class TsdbQuery implements Query {
         } else {  // We want specific IDs.  List them: /(AAA|BBB|CCC|..)/
           buf.append("(?:");
           for (final byte[] value_id : value_ids) {
-            buf.append("\\Q");
             addId(buf, value_id);
             buf.append('|');
           }
@@ -483,8 +484,10 @@ final class TsdbQuery implements Query {
     } while (tag != group_by);  // Stop when they both become null.
     // Skip any number of tags before the end.
     buf.append("(?:.{").append(tagsize).append("})*$");
-    //scanner.setKeyRegexp(buf.toString(), CHARSET);
-    scanner.setRowRegex(buf.toString());
+    IteratorSetting opts = new IteratorSetting(Integer.MAX_VALUE, RegExFilter.class);
+    RegExFilter.setEncoding(opts, CHARSET.displayName());
+    RegExFilter.setRegexs(opts, buf.toString(), null, null, null, false);
+    scanner.addScanIterator(opts);
    }
 
   /**
@@ -516,19 +519,10 @@ final class TsdbQuery implements Query {
    * Appends the given ID to the given buffer, followed by "\\E".
    */
   private static void addId(final StringBuilder buf, final byte[] id) {
-    boolean backslash = false;
     for (final byte b : id) {
-      buf.append((char) (b & 0xFF));
-      if (b == 'E' && backslash) {  // If we saw a `\' and now we have a `E'.
-        // So we just terminated the quoted section because we just added \E
-        // to `buf'.  So let's put a litteral \E now and start quoting again.
-        buf.append("\\\\E\\Q");
-      } else {
-        backslash = b == '\\';
-      }
+      buf.append(String.format("\\x%02x", b & 0xFF));
     }
-    buf.append("\\E");
-  }
+   }
 
   public String toString() {
     final StringBuilder buf = new StringBuilder();

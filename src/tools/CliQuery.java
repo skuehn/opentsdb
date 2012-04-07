@@ -103,7 +103,7 @@ final class CliQuery {
 
     final AccumuloClient client = CliOptions.clientFromOptions(argp);
     final TSDB tsdb = new TSDB(client, argp.get("--table", "tsdb"),
-                               argp.get("--uidtable", "tsdb-uid"));
+                               argp.get("--uidtable", "tsdb_uid"));
     final String basepath = argp.get("--graph");
     argp = null;
 
