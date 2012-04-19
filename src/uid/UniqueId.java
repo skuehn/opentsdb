@@ -27,8 +27,11 @@ import org.apache.accumulo.core.client.Instance;
 import org.apache.accumulo.core.client.Scanner;
 import org.apache.accumulo.core.data.Range;
 import org.apache.hadoop.io.Text;
+import org.apache.zookeeper.CreateMode;
+import org.apache.zookeeper.KeeperException;
 import org.apache.zookeeper.WatchedEvent;
 import org.apache.zookeeper.Watcher;
+import org.apache.zookeeper.ZooDefs.Ids;
 import org.apache.zookeeper.ZooKeeper;
 import org.apache.zookeeper.data.Stat;
 import org.hbase.async.Bytes;
@@ -270,6 +273,20 @@ public final class UniqueId implements UniqueIdInterface {
                 }
               });
               try {
+                // ensure the node exists:
+                if (zoo.exists(ZOO_PATH, false) == null) {
+                  String path = "";
+                  for (String part : ZOO_PATH.split("/")) {
+                    if (part.length() > 0) {
+                      try {
+                        path += "/" + part;
+                        zoo.create(path, Bytes.fromLong(nextId.get()), Ids.OPEN_ACL_UNSAFE, CreateMode.PERSISTENT);
+                      } catch (KeeperException.NodeExistsException ex) {
+                        // pass
+                      }
+                    }
+                  }
+                }
                 // Read the data (and version)
                 Stat stat = new Stat();
                 byte[] data = zoo.getData(ZOO_PATH, null, stat);
