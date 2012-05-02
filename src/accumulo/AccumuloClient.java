@@ -11,13 +11,11 @@ import org.apache.accumulo.core.client.Connector;
 import org.apache.accumulo.core.client.MultiTableBatchWriter;
 import org.apache.accumulo.core.client.Scanner;
 import org.apache.accumulo.core.client.TableNotFoundException;
-import org.apache.accumulo.core.client.ZooKeeperInstance;
 import org.apache.accumulo.core.data.Key;
 import org.apache.accumulo.core.data.Mutation;
 import org.apache.accumulo.core.data.Range;
 import org.apache.accumulo.core.data.Value;
 import org.apache.accumulo.core.iterators.WholeRowIterator;
-import org.apache.accumulo.core.security.Authorizations;
 import org.apache.accumulo.core.util.TextUtil;
 import org.apache.hadoop.io.Text;
 import org.hbase.async.AtomicIncrementRequest;
@@ -208,24 +206,5 @@ public class AccumuloClient {
 
 	public void atomicIncrement(AtomicIncrementRequest any) {
 		throw new UnsupportedOperationException();
-	}
-
-	public static void main(String[] argv) throws Exception {
-
-		ZooKeeperInstance zk = new ZooKeeperInstance("skuehn-test-1.3.5", "localhost");
-		Connector c = zk.getConnector("root", "cat".getBytes());
-
-		Scanner scanner = c.createScanner("cellscantest", new Authorizations());
-
-		Iterable<ArrayList<KeyValue>> rows = AccumuloClient.asRows(scanner);
-		int rowIdx = 0;
-		for (ArrayList<KeyValue> row : rows) {
-			System.err.println("Row [" + rowIdx++ + "] num cells: "
-					+ row.size());
-			for (KeyValue cell : row) {
-				System.err.println("     k: " + new String(cell.key()) + " v: "
-						+ new String(cell.value()));
-			}
-		}
 	}
 }
