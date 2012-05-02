@@ -71,8 +71,19 @@
   	<dependency>
   		<groupId>org.apache.accumulo</groupId>
   		<artifactId>accumulo-core</artifactId>
-  		<version>1.4.0</version>
+  		<version>1.3.5-incubating</version>
+  		<exclusions>
+  			<exclusion>
+  				<artifactId>slf4j-log4j12</artifactId>
+  				<groupId>org.slf4j</groupId>
+  			</exclusion>
+  		</exclusions>
   	</dependency>
+	<dependency>
+	        <groupId>org.apache.accumulo.thrift</groupId>
+	        <artifactId>libthrift</artifactId>
+                <version>0.3</version>
+	</dependency>
   	<dependency>
   		<groupId>org.apache.hadoop</groupId>
   		<artifactId>hadoop-core</artifactId>

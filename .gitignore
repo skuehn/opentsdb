@@ -7,3 +7,5 @@ build
 config.log
 config.status
 configure
+src/main
+ericnewton-buildscript.sh

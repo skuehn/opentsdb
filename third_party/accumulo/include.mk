@@ -13,9 +13,9 @@
 # You should have received a copy of the GNU Lesser General Public License
 # along with this library.  If not, see <http://www.gnu.org/licenses/>.
 
-ACCUMULO_VERSION := 1.4.0
+ACCUMULO_VERSION := 1.3.5-incubating
 ACCUMULO := third_party/accumulo/accumulo-core-$(ACCUMULO_VERSION).jar
-ACCUMULO_BASE_URL := https://repository.apache.org/content/groups/public/org/apache/accumulo/accumulo-core/1.4.0
+ACCUMULO_BASE_URL := https://repository.apache.org/content/groups/public/org/apache/accumulo/accumulo-core/$(ACCUMULO_VERSION)
 
 $(ACCUMULO): $(ACCUMULO).md5
 	set dummy "$(ACCUMULO_BASE_URL)" "$(ACCUMULO)"; shift; $(FETCH_DEPENDENCY)

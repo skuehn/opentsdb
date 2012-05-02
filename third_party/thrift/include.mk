@@ -13,9 +13,9 @@
 # You should have received a copy of the GNU Lesser General Public License
 # along with this library.  If not, see <http://www.gnu.org/licenses/>.
 
-THRIFT_VERSION := 0.6.1
-THRIFT := third_party/thrift/libthrift-$(THRIFT_VERSION).jar
-THRIFT_BASE_URL := https://repository.apache.org/content/groups/public/org/apache/thrift/libthrift/$(THRIFT_VERSION)
+THRIFT_VERSION := 0.3.0
+THRIFT := third_party/thrift/thrift-$(THRIFT_VERSION).jar
+THRIFT_BASE_URL := http://clojars.org/repo/org/clojars/gfodor/thrift/$(THRIFT_VERSION)
 
 $(THRIFT): $(THRIFT).md5
 	set dummy "$(THRIFT_BASE_URL)" "$(THRIFT)"; shift; $(FETCH_DEPENDENCY)

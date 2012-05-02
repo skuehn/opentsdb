@@ -26,10 +26,8 @@ import net.opentsdb.stats.Histogram;
 import net.opentsdb.uid.NoSuchUniqueId;
 import net.opentsdb.uid.NoSuchUniqueName;
 
-import org.apache.accumulo.core.client.IteratorSetting;
 import org.apache.accumulo.core.client.Scanner;
 import org.apache.accumulo.core.data.Range;
-import org.apache.accumulo.core.iterators.user.RegExFilter;
 import org.apache.hadoop.io.Text;
 import org.hbase.async.Bytes;
 import org.hbase.async.Bytes.ByteMap;
@@ -484,10 +482,7 @@ final class TsdbQuery implements Query {
     } while (tag != group_by);  // Stop when they both become null.
     // Skip any number of tags before the end.
     buf.append("(?:.{").append(tagsize).append("})*$");
-    IteratorSetting opts = new IteratorSetting(Integer.MAX_VALUE, RegExFilter.class);
-    RegExFilter.setEncoding(opts, CHARSET.displayName());
-    RegExFilter.setRegexs(opts, buf.toString(), null, null, null, false);
-    scanner.addScanIterator(opts);
+    scanner.setRowRegex(buf.toString());
    }
 
   /**
